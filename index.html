@@ -770,6 +770,13 @@ html, body { margin: 0; padding: 0; }
   .signature-row { bottom: 23mm !important; }
   .footer { bottom: 10mm !important; }
 }
+
+.failed-mark {
+  font-weight: 800;
+  text-decoration-line: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 3px;
+}
 </style>
 </head>
 
@@ -957,8 +964,8 @@ const subjectMarks = {
   "Islamiyat": [50,25], "Sindhi": [50,25]
 };
 const classSubjects = {
-  "Class 9": ["English","Urdu","Islamiyat","Maths","Physics","Chemistry","Biology","Computer","Sindhi"],
-  "Class 10": ["English","Urdu","P.St","Maths","Physics","Chemistry","Biology","Computer","Sindhi"]
+  "IX": ["English","Urdu","Islamiyat","Maths","Physics","Chemistry","Biology"],
+  "X": ["English","Urdu","Islamiyat","P.St","Maths","Physics","Chemistry","Biology","Computer","Sindhi"]
 };
 let subjectDefaults = {...subjectMarks};
 const initialSubjects = Object.entries(subjectDefaults).map(([name, marks]) => [name, marks[0], marks[1], 0]);
@@ -1118,7 +1125,7 @@ function render() {
         <td>${escapeHtml(name)}</td>
         <td>${Number.isFinite(max) ? max : "—"}</td>
         <td>${Number.isFinite(passing) ? passing : "—"}</td>
-        <td>${isAbsent ? "Absent" : (Number.isFinite(obtained) ? obtained : "—")}</td>
+        <td>${isAbsent ? "Absent" : (Number.isFinite(obtained) ? (Number.isFinite(passing) && obtained < passing ? `<span class="failed-mark">${obtained}</span>` : obtained) : "—")}</td>
       </tr>
     `;
   });
@@ -1144,18 +1151,54 @@ document.querySelectorAll("input:not([type=file]),select").forEach(el => {
   el.addEventListener("change",render);
 });
 
-$("className").addEventListener("change", () => {
-  const gradeSubjects = classSubjects[$("className").value];
-  if (!gradeSubjects) { render(); return; }
+function buildSubjectsForSelectedClass() {
+  const grade = $("className").value;
+  const gradeSubjects = classSubjects[grade];
+  if (!gradeSubjects) {
+    $("addSubject").disabled = false;
+    $("addSubject").style.display = "";
+    render();
+    return;
+  }
+
   $("subjects").innerHTML = "";
-  gradeSubjects.forEach(name => {
+  gradeSubjects.forEach((name, index) => {
     const marks = subjectMarks[name];
     addSubject(name, marks[0], marks[1], 0);
+    const row = $("subjects").lastElementChild;
+    const fields = row._subjectFields;
+
+    // Class IX has six compulsory subjects and one Biology/Computer choice.
+    if (grade === "IX" && index === 6) {
+      fields.nameSelect.innerHTML = '<option value="Biology">Biology</option><option value="Computer">Computer</option>';
+      fields.nameSelect.value = "Biology";
+      fields.nameSelect.disabled = false;
+      fields.customName.style.display = "none";
+      fields.nameSelect.addEventListener("change", () => {
+        const selectedMarks = subjectMarks[fields.nameSelect.value];
+        fields.maxInput.value = selectedMarks[0];
+        fields.passInput.value = selectedMarks[1];
+        render();
+      });
+    } else {
+      fields.nameSelect.disabled = true;
+      fields.nameSelect.style.pointerEvents = "none";
+      fields.nameSelect.style.appearance = "none";
+      fields.nameSelect.style.backgroundColor = "#f1f5f9";
+    }
+    fields.customName.style.display = "none";
   });
+
+  // Grades IX and X use fixed subject lists; no extra/custom subjects.
+  $("addSubject").disabled = true;
+  $("addSubject").style.display = "none";
   render();
-});
+}
+
+$("className").addEventListener("change", buildSubjectsForSelectedClass);
 
 $("addSubject").addEventListener("click",() => {
+  if (classSubjects[$("className").value]) return;
   addSubject("",50,25,0);
 });
 
@@ -1170,31 +1213,26 @@ $("resetBtn").addEventListener("click",() => {
     $(id).value = "";
   });
 
-  $("className").value = "Class 1";
   $("exam").value = "First Assessment";
-
-  document.querySelectorAll(".subject-row").forEach(row => {
-    if (row._subjectFields) {
-      row._subjectFields.obtainedInput.value = 0;
-      row._subjectFields.absentInput.checked = false;
-      row._subjectFields.obtainedInput.disabled = false;
-    }
-  });
   if (classSubjects[$("className").value]) {
-    $("subjects").innerHTML = "";
-    classSubjects[$("className").value].forEach(name => {
-      const marks = subjectMarks[name];
-      addSubject(name, marks[0], marks[1], 0);
+    buildSubjectsForSelectedClass();
+  } else {
+    document.querySelectorAll(".subject-row").forEach(row => {
+      if (row._subjectFields) {
+        row._subjectFields.obtainedInput.value = 0;
+        row._subjectFields.absentInput.checked = false;
+        row._subjectFields.obtainedInput.disabled = false;
+      }
     });
+    render();
   }
-  render();
 });
 
 const today = new Date();
 today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
 $("date").value = today.toISOString().slice(0,10);
 
-initialSubjects.forEach(subject => addSubject(...subject));
+buildSubjectsForSelectedClass();
 render();
 </script>
 
